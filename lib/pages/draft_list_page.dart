@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:uuid/uuid.dart';
 
 import '../models/document.dart';
 import '../models/doc_mode.dart';
@@ -53,6 +52,12 @@ class _DraftListPageState extends State<DraftListPage> {
                     },
             ),
           if (!_selectMode) ...[
+            // 筛选按钮（替代原来的 FilterBar）
+            IconButton(
+              icon: const Icon(Icons.filter_list),
+              tooltip: '筛选',
+              onPressed: _showFilterSheet,
+            ),
             IconButton(
               icon: const Icon(Icons.public),
               tooltip: '已发布展示页',
@@ -82,12 +87,12 @@ class _DraftListPageState extends State<DraftListPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showNewDocDialog,
+        onPressed: _showNewModeSheet,
         child: const Icon(Icons.add),
       ),
       body: Column(
         children: [
-          _buildFilterBar(),
+          _buildActiveFilterChip(),
           _buildSearchBar(),
           Expanded(
             child: list.loading
@@ -106,55 +111,230 @@ class _DraftListPageState extends State<DraftListPage> {
     );
   }
 
-  Widget _buildFilterBar() {
+  // =====================================
+  // 筛选：当前激活筛选 Chip + 点击弹 BottomSheet
+  // =====================================
+
+  Widget _buildActiveFilterChip() {
     final list = context.watch<DraftListProvider>();
+    if (list.modeFilter == null) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: LayoutBuilder(
-        builder: (ctx, constraints) {
-          final double itemWidth = (constraints.maxWidth - 18) / 4; // 4 chips + 3 gaps
-          return Row(
-            children: [
-              _filterChip('全部', list.modeFilter == null, () => list.setModeFilter(null), itemWidth),
-              _filterChip('文本', list.modeFilter == DocMode.normalWrite, () => list.setModeFilter(DocMode.normalWrite), itemWidth),
-              _filterChip('排版', list.modeFilter == DocMode.layout, () => list.setModeFilter(DocMode.layout), itemWidth),
-              _filterChip('开发者', list.modeFilter == DocMode.developer, () => list.setModeFilter(DocMode.developer), itemWidth),
-            ],
-          );
-        },
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFF8B5A2B).withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('筛选：${list.modeFilter!.label}', style: const TextStyle(fontSize: 12, color: Color(0xFF8B5A2B))),
+                const SizedBox(width: 4),
+                GestureDetector(
+                  onTap: () => list.setModeFilter(null),
+                  child: const Icon(Icons.close, size: 14, color: Color(0xFF8B5A2B)),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _filterChip(String label, bool selected, VoidCallback onTap, double width) {
-    return SizedBox(
-      width: width,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 3),
-        child: ChoiceChip(
-          label: FittedBox(fit: BoxFit.scaleDown, child: Text(label, maxLines: 1)),
-          selected: selected,
-          onSelected: (_) => onTap(),
-          labelStyle: TextStyle(
-            color: selected ? Colors.white : const Color(0xFF8B5A2B),
-            fontSize: 13,
+  Future<void> _showFilterSheet() async {
+    final list = context.read<DraftListProvider>();
+    final current = list.modeFilter;
+
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    const Text('筛选文档', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF3E2723))),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+              ),
+              _filterOption('全部', null, current, Icons.all_inclusive),
+              _filterOption('文本模式', DocMode.normalWrite, current, Icons.edit_note),
+              _filterOption('排版模式', DocMode.layout, current, Icons.picture_as_pdf),
+              _filterOption('开发者模式', DocMode.developer, current, Icons.code),
+              const SizedBox(height: 12),
+            ],
           ),
-          selectedColor: const Color(0xFF8B5A2B),
-          backgroundColor: Colors.white,
-          side: const BorderSide(color: Color(0xFFD7C4A8)),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          padding: EdgeInsets.zero,
-          visualDensity: VisualDensity.compact,
+        );
+      },
+    );
+  }
+
+  Widget _filterOption(String label, DocMode? mode, DocMode? current, IconData icon) {
+    final selected = mode == current;
+    return ListTile(
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF8B5A2B) : const Color(0xFF8B5A2B).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
         ),
+        child: Icon(icon, color: selected ? Colors.white : const Color(0xFF8B5A2B), size: 20),
+      ),
+      title: Text(label, style: TextStyle(fontWeight: selected ? FontWeight.w600 : FontWeight.normal)),
+      trailing: selected ? const Icon(Icons.check, color: Color(0xFF8B5A2B)) : null,
+      onTap: () {
+        context.read<DraftListProvider>().setModeFilter(mode);
+        Navigator.pop(context);
+      },
+    );
+  }
+
+  // =====================================
+  // 新建：先弹模式 → 再弹标题
+  // =====================================
+
+  Future<void> _showNewModeSheet() async {
+    final picked = await showModalBottomSheet<DocMode>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    const Text('选择创作模式', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF3E2723))),
+                    const Spacer(),
+                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                  ],
+                ),
+              ),
+              _modeOption(DocMode.normalWrite, Icons.edit_note, '纯文本写作', '适合写小说、散文、日常稿'),
+              _modeOption(DocMode.layout, Icons.picture_as_pdf, '排版可视化', 'WebView 所见即所得，支持分页'),
+              _modeOption(DocMode.developer, Icons.code, '开发者模式', '手写原生 HTML，完全可控'),
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (picked == null || !mounted) return;
+    await _showNewTitleDialog(picked);
+  }
+
+  Widget _modeOption(DocMode mode, IconData icon, String title, String subtitle) {
+    final color = switch (mode) {
+      DocMode.normalWrite => const Color(0xFF8B5A2B),
+      DocMode.layout => const Color(0xFFC89B5B),
+      DocMode.developer => const Color(0xFF6C8E6A),
+    };
+    return ListTile(
+      leading: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+        child: Icon(icon, color: color),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: Color(0xFF795548))),
+      onTap: () => Navigator.pop(context, mode),
+    );
+  }
+
+  Future<void> _showNewTitleDialog(DocMode mode) async {
+    final nameCtrl = TextEditingController();
+    final color = switch (mode) {
+      DocMode.normalWrite => const Color(0xFF8B5A2B),
+      DocMode.layout => const Color(0xFFC89B5B),
+      DocMode.developer => const Color(0xFF6C8E6A),
+    };
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('输入标题'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
+              child: Text('模式：${mode.label}', style: TextStyle(fontSize: 12, color: color)),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: nameCtrl,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: '文档标题',
+                hintText: '未命名文档',
+                border: OutlineInputBorder(),
+              ),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _createAndClose(ctx, nameCtrl, mode),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: color),
+            onPressed: () => _createAndClose(ctx, nameCtrl, mode),
+            child: const Text('创建'),
+          ),
+        ],
       ),
     );
   }
+
+  Future<void> _createAndClose(BuildContext ctx, TextEditingController nameCtrl, DocMode mode) async {
+    Navigator.pop(ctx);
+    if (!mounted) return;
+    final title = nameCtrl.text.trim().isEmpty ? '未命名文档' : nameCtrl.text.trim();
+    await context.read<DocumentProvider>().createNew(title: title, docMode: mode);
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const DocumentEditorRouter()),
+    ).then((_) {
+      if (mounted) context.read<DraftListProvider>().refresh();
+    });
+  }
+
+  // =====================================
+  // 卡片 / 搜索 / 空态 / 工具方法
+  // =====================================
 
   Widget _buildSearchBar() {
     final list = context.read<DraftListProvider>();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: TextField(
         decoration: const InputDecoration(hintText: '搜索标题或正文…', prefixIcon: Icon(Icons.search, size: 20), isDense: true),
         onChanged: list.setKeyword,
@@ -277,52 +457,5 @@ class _DraftListPageState extends State<DraftListPage> {
       return '今天 ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
     }
     return '${dt.year}-${dt.month}-${dt.day}';
-  }
-
-  Future<void> _showNewDocDialog() async {
-    final nameCtrl = TextEditingController();
-    DocMode selected = DocMode.normalWrite;
-
-    await showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, set) => AlertDialog(
-          title: const Text('新建文档'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标题')),
-              const SizedBox(height: 16),
-              const Text('默认模式'),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                children: DocMode.values
-                    .map((m) => ChoiceChip(label: Text(m.label), selected: selected == m, onSelected: (_) => set(() => selected = m)))
-                    .toList(),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                final title = nameCtrl.text.trim().isEmpty ? '未命名文档' : nameCtrl.text.trim();
-                await context.read<DocumentProvider>().createNew(title: title, docMode: selected);
-                if (!mounted) return;
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const DocumentEditorRouter()),
-                ).then((_) {
-                  if (mounted) context.read<DraftListProvider>().refresh();
-                });
-              },
-              child: const Text('创建'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
