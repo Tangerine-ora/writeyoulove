@@ -35,7 +35,10 @@ class _DraftListPageState extends State<DraftListPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_selectMode ? '已选 ${_selected.length} 项' : '草稿箱'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: _selectMode ? Text('已选 ${_selected.length} 项') : null,
+        centerTitle: false,
         actions: [
           if (_selectMode)
             IconButton(
