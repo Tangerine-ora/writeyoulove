@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>Layout Editor</title>
+<style>
+  :root {
+    --wy-warm-brown: #8B5A2B;
+    --wy-warm-brown-light: #B08968;
+    --wy-cream: #FDF8F0;
+    --wy-cream-dark: #F2E9DA;
+    --wy-text: #3E2723;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--wy-cream); font-family: "Noto Serif SC", "PingFang SC", serif; color: var(--wy-text); }
+
+  /* ===== page-setting 渲染 ===== */
+  page-setting {
+    display: block;
+    padding: 24px 32px;
+    min-height: 70vh;
+    position: relative;
+    background-color: var(--wy-cream);
+  }
+  page-setting[data-bg-image]::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: attr(data-bg-image url);
+    background-size: cover;
+    background-position: center;
+    z-index: -1;
+  }
+  page-break {
+    display: block;
+    page-break-after: always;
+    border-top: 1px dashed var(--wy-warm-brown);
+    margin: 16px 0;
+    position: relative;
+  }
+
+  /* ===== 交互组件 ===== */
+  .wy-expand { cursor: pointer; border-bottom: 1px dashed var(--wy-warm-brown); }
+  .wy-expand .wy-hidden { display: none; }
+  .wy-expand.open .wy-hidden { display: inline; }
+
+  .wy-shatter { cursor: pointer; transition: opacity .6s, letter-spacing .6s; display: inline; }
+  .wy-shatter.shattered { opacity: 0; letter-spacing: 20px; }
+  .wy-shatter + .wy-after-shatter { display: none; }
+  .wy-shatter.shattered + .wy-after-shatter { display: inline; }
+
+  .wy-pagebreak {
+    display: inline-block;
+    padding: 4px 12px;
+    background: var(--wy-warm-brown);
+    color: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+
+  /* ===== 文字衬底 ===== */
+  .wy-text-bg {
+    background: rgba(255,255,255,0.6);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  /* ===== 选区框（可视化选中元素）===== */
+  .wy-selected {
+    outline: 2px dashed var(--wy-warm-brown);
+    outline-offset: 2px;
+  }
+</style>
+</head>
+<body>
+<div id="wy-editor-root" contenteditable="true"></div>
+
+<script>
+(function() {
+  const root = document.getElementById('wy-editor-root');
+
+  // ===== 对外暴露 API（Flutter 通过 runJavaScript 调用）=====
+  window.__WY_LOAD_CONTENT__ = function(html) {
+    root.innerHTML = html || '';
+    // 初始化交互组件
+    _bindInteractions();
+  };
+
+  window.__WY_GET_CONTENT__ = function() {
+    return root.innerHTML;
+  };
+
+  window.__WY_TOOLBAR_ACTION__ = function(action) {
+    // 把按钮操作路由到具体实现
+    const handlers = {
+      'insert-page': () => {
+        const pb = document.createElement('page-break');
+        root.appendChild(pb);
+        const ps = document.createElement('page-setting');
+        ps.setAttribute('bg', '#FDF8F0');
+        root.appendChild(ps);
+        root.focus();
+      },
+      'duplicate-page': () => { /* 查找当前页并复制 */ },
+      'delete-page': () => { /* 删除当前选中页 */ },
+      'bg-setting': () => { /* 弹背景配置面板，Flutter 侧可弹 Flutter 弹窗 */ },
+      'z-layer': () => { /* 弹窗层级设置 */ },
+      'comp-expand': () => {
+        const sel = window.getSelection();
+        if (!sel.rangeCount) return;
+        const range = sel.getRangeAt(0);
+        const span = document.createElement('span');
+        span.className = 'wy-expand';
+        const hidden = document.createElement('span');
+        hidden.className = 'wy-hidden';
+        hidden.textContent = '点击展开后的内容写这里…';
+        span.appendChild(document.createTextNode('▼ 点击展开'));
+        span.appendChild(hidden);
+        range.surroundContents(span);
+        _bindInteractions();
+      },
+      'comp-shatter': () => {
+        const sel = window.getSelection();
+        if (!sel.rangeCount) return;
+        const range = sel.getRangeAt(0);
+        const span = document.createElement('span');
+        span.className = 'wy-shatter';
+        span.textContent = range.toString() || '点击碎裂';
+        const after = document.createElement('span');
+        after.className = 'wy-after-shatter';
+        after.textContent = '碎裂后显示的内容…';
+        range.deleteContents();
+        range.insertNode(span);
+        span.parentNode.insertBefore(after, span.nextSibling);
+        _bindInteractions();
+      },
+      'comp-pagebreak': () => {
+        const pb = document.createElement('page-break');
+        window.getSelection().getRangeAt(0).insertNode(pb);
+      },
+      'text-bg': () => { /* 弹文字衬底配置 */ },
+      'page-animation': () => { /* 翻页动画偏好 */ },
+    };
+    if (handlers[action]) handlers[action]();
+  };
+
+  function _bindInteractions() {
+    // expand 点击展开
+    root.querySelectorAll('.wy-expand').forEach(el => {
+      el.addEventListener('click', function() { this.classList.toggle('open'); });
+    });
+    // shatter 点击碎裂
+    root.querySelectorAll('.wy-shatter').forEach(el => {
+      el.addEventListener('click', function() { this.classList.add('shattered'); });
+    });
+    // pagebreak 锚点（预览模式才跳转，编辑模式只标记）
+    root.querySelectorAll('.wy-pagebreak').forEach(el => {
+      el.addEventListener('click', function(e) { e.stopPropagation(); });
+    });
+  }
+})();
+</script>
+</body>
+</html>

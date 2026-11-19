@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>WY Preview</title>
+<style>
+  :root {
+    --wy-warm-brown: #8B5A2B;
+    --wy-cream: #FDF8F0;
+    --wy-text: #3E2723;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #000; font-family: "Noto Serif SC", "PingFang SC", serif; color: var(--wy-text); }
+
+  #wy-stage {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  .wy-page {
+    position: absolute;
+    inset: 0;
+    padding: 32px 48px;
+    overflow-y: auto;
+    display: none;
+  }
+  .wy-page.active {
+    display: block;
+  }
+
+  /* page-setting 背景 */
+  .wy-page[data-bg-color] {
+    background-color: attr(data-bg-color color);
+  }
+  .wy-page[data-bg-image] {
+    background-image: attr(data-bg-image url);
+  }
+  .wy-page[data-bg-mode="cover"] { background-size: cover; background-position: center; }
+  .wy-page[data-bg-mode="contain"] { background-size: contain; background-position: center; background-repeat: no-repeat; }
+  .wy-page[data-bg-mode="repeat"] { background-size: auto; background-repeat: repeat; }
+
+  /* 交互组件 */
+  .wy-expand { cursor: pointer; border-bottom: 1px dashed var(--wy-warm-brown); }
+  .wy-expand .wy-hidden { display: none; }
+  .wy-expand.open .wy-hidden { display: inline; }
+
+  .wy-shatter { cursor: pointer; transition: opacity .6s, letter-spacing .6s; display: inline; }
+  .wy-shatter.shattered { opacity: 0; letter-spacing: 20px; }
+  .wy-shatter + .wy-after-shatter { display: none; }
+  .wy-shatter.shattered + .wy-after-shatter { display: inline; }
+
+  .wy-pagebreak {
+    display: inline-block;
+    padding: 4px 12px;
+    background: var(--wy-warm-brown);
+    color: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .wy-pagebreak:hover { background: #5C3A1E; }
+
+  .wy-text-bg {
+    background: rgba(255,255,255,0.6);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+<div id="wy-stage"></div>
+
+<script>
+(function() {
+  const stage = document.getElementById('wy-stage');
+  let pages = [];
+  let currentIdx = 0;
+
+  window.__WY_PREVIEW_LOAD__ = function(html, readOnly) {
+    stage.innerHTML = '';
+    pages = _parsePages(html);
+    pages.forEach(p => stage.appendChild(p));
+    window.__WY_PAGE_COUNT__ = pages.length;
+    _bindInteractions(readOnly);
+    _showPage(0);
+  };
+
+  window.__WY_GO_PAGE__ = function(idx) {
+    _showPage(idx);
+  };
+
+  function _showPage(idx) {
+    if (idx < 0 || idx >= pages.length) return;
+    currentIdx = idx;
+    pages.forEach((p, i) => {
+      p.classList.toggle('active', i === idx);
+    });
+    pages[idx].scrollTop = 0;
+  }
+
+  // 按 page-setting / page-break 切分页
+  function _parsePages(html) {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = html;
+
+    const rawPages = [];
+    let current = {
+      bgColor: '#FDF8F0',
+      bgImage: null,
+      bgMode: 'cover',
+      nodes: [],
+    };
+
+    Array.from(wrapper.childNodes).forEach(node => {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const tag = node.tagName.toLowerCase();
+        if (tag === 'page-setting') {
+          if (current.nodes.length > 0 || rawPages.length > 0) {
+            rawPages.push(current);
+            current = { bgColor: '#FDF8F0', bgImage: null, bgMode: 'cover', nodes: [] };
+          }
+          current.bgColor = node.getAttribute('bg') || '#FDF8F0';
+          current.bgImage = node.getAttribute('bg-image');
+          current.bgMode = node.getAttribute('bg-mode') || 'cover';
+        } else if (tag === 'page-break') {
+          if (current.nodes.length > 0) {
+            rawPages.push(current);
+            current = { bgColor: '#FDF8F0', bgImage: null, bgMode: 'cover', nodes: [] };
+          }
+        } else {
+          current.nodes.push(node);
+        }
+      } else {
+        current.nodes.push(node);
+      }
+    });
+    if (current.nodes.length > 0 || rawPages.length === 0) rawPages.push(current);
+
+    return rawPages.map((p, i) => {
+      const el = document.createElement('div');
+      el.className = 'wy-page';
+      el.setAttribute('data-bg-color', p.bgColor);
+      if (p.bgImage) el.setAttribute('data-bg-image', p.bgImage);
+      el.setAttribute('data-bg-mode', p.bgMode);
+      p.nodes.forEach(n => el.appendChild(n.cloneNode(true)));
+      return el;
+    });
+  }
+
+  function _bindInteractions(readOnly) {
+    stage.querySelectorAll('.wy-expand').forEach(el => {
+      el.addEventListener('click', function() { this.classList.toggle('open'); });
+    });
+    stage.querySelectorAll('.wy-shatter').forEach(el => {
+      el.addEventListener('click', function() { this.classList.add('shattered'); });
+    });
+    stage.querySelectorAll('.wy-pagebreak').forEach(el => {
+      el.addEventListener('click', function() {
+        _showPage(Math.min(currentIdx + 1, pages.length - 1));
+      });
+    });
+    // 禁止点击页面空白翻页（硬性要求）
+    if (readOnly) {
+      stage.addEventListener('click', function(e) {
+        // 翻页锚点已独立绑定
+      });
+    }
+  }
+
+  // 禁止键盘翻页（硬性要求）
+  document.addEventListener('keydown', function(e) {
+    if (['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', ' '].includes(e.key)) {
+      e.preventDefault();
+      return false;
+    }
+  }, { passive: false });
+})();
+</script>
+</body>
+</html>
