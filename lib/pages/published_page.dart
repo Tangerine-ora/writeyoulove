@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -8,12 +6,10 @@ import '../models/document.dart';
 import '../models/doc_mode.dart';
 import '../providers/draft_list_provider.dart';
 import '../providers/preferences_provider.dart';
-import 'preview_page.dart';
 
-/// 已发布展示页 —— 错踪卡片墙 + 仅底部翻页，无编辑入口
+/// 已发布展示页 —— 按设计稿：错踪堆叠卡片 + 半透明简介 + 暖棕米白
 class PublishedPage extends StatefulWidget {
   const PublishedPage({super.key});
-
   @override
   State<PublishedPage> createState() => _PublishedPageState();
 }
@@ -23,7 +19,6 @@ class _PublishedPageState extends State<PublishedPage> {
   WebViewController? _controller;
   int _currentPage = 0;
   int _totalPages = 1;
-  final Random _random = Random(42); // 固定种子，保证每次渲染错位一致
 
   @override
   void initState() {
@@ -60,166 +55,52 @@ class _PublishedPageState extends State<PublishedPage> {
     await _controller!.runJavaScript('window.__WY_GO_PAGE__($idx);');
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final list = context.watch<DraftListProvider>();
+  // ====== 正在阅读 ======
+  Widget _buildReading(Document doc) {
     final prefs = context.watch<PreferencesProvider>();
-
-    // ====== 正在阅读某篇 ======
-    if (_currentDoc != null && _controller != null) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: Stack(
-          children: [
-            WebViewWidget(controller: _controller!),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                padding: EdgeInsets.only(
-                  top: MediaQuery.of(context).padding.top + 8,
-                  left: 8,
-                  right: 8,
-                  bottom: 8,
-                ),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.black.withOpacity(0.5), Colors.transparent],
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () => setState(() => _currentDoc = null),
-                    ),
-                    Expanded(
-                      child: Text(
-                        _currentDoc!.title,
-                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (!prefs.hidePageTurnButton) _buildPageTurnBar(),
-          ],
-        ),
-      );
-    }
-
-    // ====== 发布墙：错踪卡片 ======
-    final published = list.docs.where((d) => d.isPublished && d.docMode == DocMode.layout).toList();
-
     return Scaffold(
-      backgroundColor: const Color(0xFFFDF8F0),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          '已发布',
-          style: TextStyle(color: Color(0xFF8B5A2B), fontWeight: FontWeight.w600, fontSize: 18),
-        ),
-        foregroundColor: const Color(0xFF8B5A2B),
-        actions: [
-          // 搜索
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('搜索功能待实现')),
-              );
-            },
-          ),
-          // 圆形头像 + 切换回编辑
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: () {
-                context.read<DraftListProvider>().setPublishedFilter(null);
-                Navigator.of(context).pop();
-              },
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFF8B5A2B),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4, offset: const Offset(0, 2))],
-                ),
-                child: const Icon(Icons.person, color: Colors.white, size: 22),
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          WebViewWidget(controller: _controller!),
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: Container(
+              padding: EdgeInsets.only(
+                top: MediaQuery.of(context).padding.top + 8,
+                left: 8, right: 8, bottom: 8,
               ),
-            ),
-          ),
-        ],
-      ),
-      body: published.isEmpty
-          ? const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                  colors: [Colors.black.withOpacity(0.5), Colors.transparent],
+                ),
+              ),
+              child: Row(
                 children: [
-                  Icon(Icons.menu_book, size: 64, color: Color(0xFFD7C4A8)),
-                  SizedBox(height: 12),
-                  Text('暂无已发布的排版作品', style: TextStyle(color: Color(0xFF795548))),
+                  IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => setState(() => _currentDoc = null)),
+                  Expanded(child: Text(doc.title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
                 ],
               ),
-            )
-          : _buildStaggeredWall(published),
-    );
-  }
-
-  // ============= 错踪卡片墙 =============
-
-  Widget _buildStaggeredWall(List<Document> docs) {
-    return LayoutBuilder(
-      builder: (ctx, constraints) {
-        final crossCount = constraints.maxWidth > 600 ? 2 : 1;
-        final items = <Widget>[];
-        for (int i = 0; i < docs.length; i++) {
-          // 错踪：偶数卡片右移 + 下移，奇数卡片左移 + 上移一点
-          final offsetX = (i % 2 == 0 ? 0.0 : 16.0) + (_random.nextDouble() * 6 - 3);
-          final offsetY = (i % 2 == 0 ? 8.0 : -4.0) + (_random.nextDouble() * 4 - 2);
-          final rotate = (_random.nextDouble() - 0.5) * 0.04; // ±1.15° 轻微倾斜
-
-          items.add(
-            Transform.translate(
-              offset: Offset(offsetX, offsetY),
-              child: Transform.rotate(
-                angle: rotate,
-                child: _PublishedCard(doc: docs[i], onTap: () => _openDoc(docs[i])),
-              ),
             ),
-          );
-        }
-        return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: items,
           ),
-        );
-      },
+          if (!prefs.hidePageTurnButton) _buildPageTurnBar(),
+        ],
+      ),
     );
   }
 
   Widget _buildPageTurnBar() {
     return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 20,
+      left: 0, right: 0, bottom: 20,
       child: Center(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.white.withOpacity(0.92),
             borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 8)],
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10)],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -233,9 +114,144 @@ class _PublishedPageState extends State<PublishedPage> {
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = context.watch<DraftListProvider>();
+
+    if (_currentDoc != null && _controller != null) {
+      return _buildReading(_currentDoc!);
+    }
+
+    final published = list.docs.where((d) => d.isPublished && d.docMode == DocMode.layout).toList();
+
+    // ====== 展示页：暖米白底 + 顶部栏 + 错踪卡片墙 ======
+    return Scaffold(
+      backgroundColor: const Color(0xFFFDF8F0),
+      body: Column(
+        children: [
+          _buildTopBar(),
+          Expanded(
+            child: published.isEmpty
+                ? const _EmptyHint()
+                : _buildCardWall(published),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ====== 顶部栏：已发布 + 搜索 + 圆形头像 ======
+  Widget _buildTopBar() {
+    return SafeArea(
+      bottom: false,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            // 搜索
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFD7C4A8)),
+              ),
+              child: const Icon(Icons.search, color: Color(0xFF8B5A2B), size: 20),
+            ),
+            const SizedBox(width: 12),
+            // 标题
+            const Text('已发布', style: TextStyle(color: Color(0xFF8B5A2B), fontWeight: FontWeight.w700, fontSize: 20)),
+            const Spacer(),
+            // 圆形头像
+            GestureDetector(
+              onTap: () {
+                context.read<DraftListProvider>().setPublishedFilter(null);
+                Navigator.of(context).pop();
+              },
+              child: Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF8B5A2B),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 4, offset: const Offset(0, 2))],
+                ),
+                child: const Icon(Icons.person, color: Colors.white, size: 22),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ====== 错踪卡片墙 ======
+  // 设计稿理解：一张卡片叠在上一张右下角，斜着排，不是 wrap 换行
+  Widget _buildCardWall(List<Document> docs) {
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        final cardW = (constraints.maxWidth - 48) / 2; // 两列卡片
+        final cardH = 240.0;
+        final overlap = 24.0; // 下一张卡片向上偏移覆盖上一张
+        final cols = 2;
+        // 每列位置：第 r 行第 c 列
+        final positions = <_CardPos>[];
+        for (int i = 0; i < docs.length; i++) {
+          final c = i % cols;
+          final r = i ~/ cols;
+          positions.add(_CardPos(c: c, r: r));
+        }
+        final totalRows = (docs.length / cols).ceil();
+        final totalH = totalRows * cardH - (totalRows - 1) * overlap + 32;
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: SizedBox(
+            width: constraints.maxWidth,
+            height: totalH,
+            child: Stack(
+              children: [
+                for (int i = 0; i < docs.length; i++)
+                  Positioned(
+                    left: positions[i].c * (cardW + 16),
+                    top: positions[i].r * (cardH - overlap),
+                    child: SizedBox(
+                      width: cardW,
+                      height: cardH,
+                      child: _PublishedCard(doc: docs[i], onTap: () => _openDoc(docs[i])),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
-/// 已发布作品卡片 —— 半透明缩略 + 半透明简介 + 主标题
+class _CardPos { final int c, r; const _CardPos({required this.c, required this.r}); }
+
+class _EmptyHint extends StatelessWidget {
+  const _EmptyHint();
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.menu_book, size: 64, color: const Color(0xFFD7C4A8).withOpacity(0.6)),
+          const SizedBox(height: 12),
+          Text('暂无已发布的排版作品', style: TextStyle(color: const Color(0xFF795548).withOpacity(0.7))),
+          const SizedBox(height: 4),
+          Text('在草稿箱里把文档发布后会出现在这里', style: TextStyle(color: const Color(0xFF795548).withOpacity(0.5), fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+/// 发布卡片：顶部渐变缩略区 + 半透明简介 + 主标题 + 模式标签
 class _PublishedCard extends StatelessWidget {
   final Document doc;
   final VoidCallback onTap;
@@ -243,86 +259,63 @@ class _PublishedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final preview = _extractPreview(doc);
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: double.infinity,
-        constraints: const BoxConstraints(maxWidth: 320),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF8B5A2B).withOpacity(0.12),
-              blurRadius: 12,
+              color: const Color(0xFF8B5A2B).withOpacity(0.18),
+              blurRadius: 10,
               offset: const Offset(0, 4),
             ),
           ],
         ),
+        clipBehavior: Clip.antiAlias,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 半透明缩略区（假图，用渐变色块模拟）
-            Container(
-              height: 140,
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFF8B5A2B).withOpacity(0.18),
-                    const Color(0xFFC89B5B).withOpacity(0.22),
-                    const Color(0xFFFDF8F0).withOpacity(0.3),
-                  ],
+            // 渐变缩略区
+            Expanded(
+              flex: 3,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF8B5A2B).withOpacity(0.16),
+                      const Color(0xFFC89B5B).withOpacity(0.24),
+                      const Color(0xFFF2E9DA).withOpacity(0.4),
+                    ],
+                  ),
+                ),
+                child: Center(
+                  child: Icon(Icons.menu_book, size: 36, color: const Color(0xFF8B5A2B).withOpacity(0.35)),
                 ),
               ),
-              child: Center(
-                child: Icon(Icons.menu_book, size: 42, color: const Color(0xFF8B5A2B).withOpacity(0.4)),
-              ),
             ),
+            // 简介（半透明）+ 主标题
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 半透明字体简介
-                  Text(
-                    preview,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: const Color(0xFF3E2723).withOpacity(0.45), // 半透明
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // 主标题
-                  Text(
-                    doc.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF3E2723),
-                    ),
-                  ),
+                  Text(_extractPreview(doc), maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11.5, color: const Color(0xFF3E2723).withOpacity(0.4), height: 1.4)),
                   const SizedBox(height: 6),
-                  // 模式标签
+                  Text(doc.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF3E2723))),
+                  const SizedBox(height: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: const Color(0xFF8B5A2B).withOpacity(0.12),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: Text(
-                      doc.modeLabel,
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF8B5A2B)),
-                    ),
+                    child: Text(doc.modeLabel, style: const TextStyle(fontSize: 11, color: Color(0xFF8B5A2B))),
                   ),
                 ],
               ),
@@ -337,7 +330,7 @@ class _PublishedCard extends StatelessWidget {
     var s = doc.layoutContent;
     s = s.replaceAll(RegExp(r'<[^>]+>'), '');
     s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (s.length > 50) s = s.substring(0, 50);
+    if (s.length > 40) s = s.substring(0, 40);
     return s.isEmpty ? '尚未添加内容简介' : s;
   }
 }

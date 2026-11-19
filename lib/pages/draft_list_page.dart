@@ -110,18 +110,42 @@ class _DraftListPageState extends State<DraftListPage> {
     final list = context.watch<DraftListProvider>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            ChoiceChip(label: const Text('全部'), selected: list.modeFilter == null, onSelected: (_) => list.setModeFilter(null)),
-            const SizedBox(width: 6),
-            ChoiceChip(label: const Text('文本'), selected: list.modeFilter == DocMode.normalWrite, onSelected: (_) => list.setModeFilter(DocMode.normalWrite)),
-            const SizedBox(width: 6),
-            ChoiceChip(label: const Text('排版'), selected: list.modeFilter == DocMode.layout, onSelected: (_) => list.setModeFilter(DocMode.layout)),
-            const SizedBox(width: 6),
-            ChoiceChip(label: const Text('开发者'), selected: list.modeFilter == DocMode.developer, onSelected: (_) => list.setModeFilter(DocMode.developer)),
-          ],
+      child: LayoutBuilder(
+        builder: (ctx, constraints) {
+          final double itemWidth = (constraints.maxWidth - 18) / 4; // 4 chips + 3 gaps
+          return Row(
+            children: [
+              _filterChip('全部', list.modeFilter == null, () => list.setModeFilter(null), itemWidth),
+              _filterChip('文本', list.modeFilter == DocMode.normalWrite, () => list.setModeFilter(DocMode.normalWrite), itemWidth),
+              _filterChip('排版', list.modeFilter == DocMode.layout, () => list.setModeFilter(DocMode.layout), itemWidth),
+              _filterChip('开发者', list.modeFilter == DocMode.developer, () => list.setModeFilter(DocMode.developer), itemWidth),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _filterChip(String label, bool selected, VoidCallback onTap, double width) {
+    return SizedBox(
+      width: width,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: ChoiceChip(
+          label: FittedBox(fit: BoxFit.scaleDown, child: Text(label, maxLines: 1)),
+          selected: selected,
+          onSelected: (_) => onTap(),
+          labelStyle: TextStyle(
+            color: selected ? Colors.white : const Color(0xFF8B5A2B),
+            fontSize: 13,
+          ),
+          selectedColor: const Color(0xFF8B5A2B),
+          backgroundColor: Colors.white,
+          side: const BorderSide(color: Color(0xFFD7C4A8)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
         ),
       ),
     );
