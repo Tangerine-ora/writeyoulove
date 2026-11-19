@@ -14,29 +14,23 @@ dependencies:
   # ===== 状态管理 =====
   provider: ^6.1.2
 
-  # ===== 本地数据库 Isar =====
-  isar: ^3.1.0+1
-  isar_flutter_libs: ^3.1.0+1
-  path_provider: ^2.1.4
-
-  # ===== 偏好持久化 =====
+  # ===== 本地存储 =====
   shared_preferences: ^2.3.2
+  path_provider: ^2.1.4
 
   # ===== 富文本编辑器（普通写作模式）=====
   flutter_quill: ^11.6.0
 
   # ===== WebView（排版模式 + 开发者模式）=====
-  webview_flutter: ^4.10.0
+  webview_flutter: ^4.14.1
 
   # ===== 工具 =====
-  uuid: ^4.5.1
+  uuid: ^4.6.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  isar_generator: ^3.1.0+1
-  build_runner: ^2.4.13
 
 flutter:
   uses-material-design: true

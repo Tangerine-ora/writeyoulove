@@ -1,14 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-import '../constants/app_colors.dart';
 import '../models/document.dart';
-import '../models/preferences.dart';
 import '../providers/preferences_provider.dart';
+import 'package:provider/provider.dart';
 
-/// 排版独立只读预览页 —— 交互逻辑和发布页完全一致
-/// 仅支持底部翻页按钮：不支持点击页面翻页、不支持键盘快捷键
+/// 排版独立只读预览页 —— 禁止键盘和点击翻页，仅底部按钮
 class PreviewPage extends StatefulWidget {
   final Document doc;
   const PreviewPage({super.key, required this.doc});
@@ -27,7 +26,7 @@ class _PreviewPageState extends State<PreviewPage> {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(AppColors.creamWhite)
+      ..setBackgroundColor(const Color(0xFFFDF8F0))
       ..loadFlutterAsset('assets/web/preview.html')
       ..setNavigationDelegate(
         NavigationDelegate(onPageFinished: (_) => _injectContent()),
@@ -39,7 +38,9 @@ class _PreviewPageState extends State<PreviewPage> {
       'window.__WY_PREVIEW_LOAD__(${jsonEncode(widget.doc.layoutContent)}, true);',
     );
     final count = await _controller.runJavaScriptReturningResult('window.__WY_PAGE_COUNT__ || 1');
-    setState(() => _totalPages = int.tryParse(count?.toString() ?? '1') ?? 1);
+    setState(() {
+      _totalPages = int.tryParse(count?.toString() ?? '1') ?? 1;
+    });
   }
 
   Future<void> _goPage(int idx) async {
@@ -51,12 +52,8 @@ class _PreviewPageState extends State<PreviewPage> {
   @override
   Widget build(BuildContext context) {
     final prefs = context.watch<PreferencesProvider>();
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text('预览 · ${widget.doc.title}'),
-        automaticallyImplyLeading: true,
-      ),
+      appBar: AppBar(title: Text('预览 · ${widget.doc.title}')),
       body: Stack(
         children: [
           WebViewWidget(controller: _controller),
@@ -82,15 +79,9 @@ class _PreviewPageState extends State<PreviewPage> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: _currentPage > 0 ? () => _goPage(_currentPage - 1) : null,
-              ),
+              IconButton(icon: const Icon(Icons.chevron_left), onPressed: _currentPage > 0 ? () => _goPage(_currentPage - 1) : null),
               Text('${_currentPage + 1} / $_totalPages'),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed: _currentPage < _totalPages - 1 ? () => _goPage(_currentPage + 1) : null,
-              ),
+              IconButton(icon: const Icon(Icons.chevron_right), onPressed: _currentPage < _totalPages - 1 ? () => _goPage(_currentPage + 1) : null),
             ],
           ),
         ),

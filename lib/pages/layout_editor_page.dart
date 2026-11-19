@@ -1,17 +1,20 @@
-import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:provider/provider.dart';
+import 'dart:convert';
 
-import '../constants/app_colors.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+
 import '../models/document.dart';
+import '../models/doc_mode.dart';
 import '../providers/document_provider.dart';
+import '../providers/preferences_provider.dart';
 import '../services/export_service.dart';
 import '../services/word_counter.dart';
+import 'document_editor_router.dart';
 import 'mode_switch_dialog.dart';
 import 'preview_page.dart';
 
-/// 排版可视化模式 —— WebView 内嵌 Tiptap/Lexical 风格编辑器
-/// 所有底层 HTML 封装为按钮/弹窗/滑块，用户看不到代码
+/// 排版可视化模式 —— WebView 内嵌编辑器
 class LayoutEditorPage extends StatefulWidget {
   const LayoutEditorPage({super.key});
 
@@ -21,10 +24,9 @@ class LayoutEditorPage extends StatefulWidget {
 
 class _LayoutEditorPageState extends State<LayoutEditorPage> {
   late final WebViewController _controller;
-  final List<String> _undoStack = [];
-  final List<String> _redoStack = [];
   bool _showSourceView = false;
   final TextEditingController _sourceCtrl = TextEditingController();
+  bool _initialized = false;
 
   @override
   void initState() {
@@ -32,9 +34,16 @@ class _LayoutEditorPageState extends State<LayoutEditorPage> {
     final doc = context.read<DocumentProvider>().current!;
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(AppColors.creamWhite)
+      ..setBackgroundColor(const Color(0xFFFDF8F0))
       ..enableZoom(false)
+      ..setNavigationDelegate(
+        NavigationDelegate(onPageFinished: (_) async {
+          await _injectContent();
+          _initialized = true;
+        }),
+      )
       ..loadFlutterAsset('assets/web/layout_editor.html');
+    _sourceCtrl.text = doc.layoutContent;
   }
 
   Future<void> _injectContent() async {
@@ -46,7 +55,7 @@ class _LayoutEditorPageState extends State<LayoutEditorPage> {
 
   Future<String?> _fetchContent() async {
     final result = await _controller.runJavaScriptReturningResult(
-      'window.__WY_GET_CONTENT__ && window.__WY_GET_CONTENT__() || "";',
+      'window.__WY_GET_CONTENT__ ? window.__WY_GET_CONTENT__() : "";',
     );
     return result?.toString();
   }
@@ -73,16 +82,6 @@ class _LayoutEditorPageState extends State<LayoutEditorPage> {
           title: Text('排版 · ${doc.title}'),
           actions: [
             IconButton(
-              icon: const Icon(Icons.undo),
-              tooltip: '撤销',
-              onPressed: _undoStack.isNotEmpty ? _undo : null,
-            ),
-            IconButton(
-              icon: const Icon(Icons.redo),
-              tooltip: '重做',
-              onPressed: _redoStack.isNotEmpty ? _redo : null,
-            ),
-            IconButton(
               icon: Icon(_showSourceView ? Icons.visibility : Icons.code),
               tooltip: _showSourceView ? '返回可视化' : '查看源码',
               onPressed: () => setState(() => _showSourceView = !_showSourceView),
@@ -94,8 +93,8 @@ class _LayoutEditorPageState extends State<LayoutEditorPage> {
             ),
             IconButton(
               icon: const Icon(Icons.swap_horiz),
-              tooltip: '切换模式',
-              onPressed: () => _showModeSwitchDialog(DocMode.normalWrite),
+              tooltip: '切换到普通写作',
+              onPressed: () => _showSwitchToNormal(),
             ),
           ],
           bottom: PreferredSize(
@@ -110,7 +109,7 @@ class _LayoutEditorPageState extends State<LayoutEditorPage> {
                   ? _buildSourceView()
                   : WebViewWidget(controller: _controller),
             ),
-            _buildFooterBar(perPage),
+            _FooterBar(perPage: perPage, onSave: _save, onPublish: _publish, onExport: _exportHtml),
           ],
         ),
       ),
@@ -134,34 +133,18 @@ class _LayoutEditorPageState extends State<LayoutEditorPage> {
     );
   }
 
-  Widget _buildFooterBar(List<int> perPage) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      color: AppColors.creamDark,
-      child: Row(
-        children: [
-          Text('共 ${perPage.length} 页 · 逐页字数：${perPage.join('/')}',
-              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-          const Spacer(),
-          FilledButton.tonal(onPressed: _save, child: const Text('保存草稿')),
-          const SizedBox(width: 8),
-          FilledButton.tonal(onPressed: _publish, child: const Text('发布')),
-          const SizedBox(width: 8),
-          FilledButton.tonal(onPressed: _exportHtml, child: const Text('导出')),
-        ],
-      ),
-    );
-  }
-
   void _onToolbarAction(String action) {
-    // 把操作派发到 WebView JS Bridge
     _controller.runJavaScript('window.__WY_TOOLBAR_ACTION__("$action");');
   }
 
   Future<void> _save() async {
-    final content = await _fetchContent();
-    if (content != null) {
-      await context.read<DocumentProvider>().saveCurrent(newContent: content);
+    if (_showSourceView) {
+      await context.read<DocumentProvider>().saveCurrent(newContent: _sourceCtrl.text);
+    } else {
+      final content = await _fetchContent();
+      if (content != null) {
+        await context.read<DocumentProvider>().saveCurrent(newContent: content);
+      }
     }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -181,17 +164,15 @@ class _LayoutEditorPageState extends State<LayoutEditorPage> {
   }
 
   Future<void> _exportHtml() async {
+    await _save();
     final doc = context.read<DocumentProvider>().current!;
-    final path = await ExportService.instance.exportHtmlPackage(doc);
+    final html = await ExportService.instance.exportHtmlPackage(doc);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已导出：$path')),
+        SnackBar(content: Text('HTML 已生成：${html.length} 字符')),
       );
     }
   }
-
-  void _undo() {} // TODO: JS Bridge 调用 WebView 内部 undo
-  void _redo() {}
 
   Future<void> _preview() async {
     await _save();
@@ -203,18 +184,17 @@ class _LayoutEditorPageState extends State<LayoutEditorPage> {
     );
   }
 
-  /// 排版模式 → 普通写作：提示排版标记失效；清洗 HTML 后转 Delta
-  Future<void> _showModeSwitchDialog(DocMode target) async {
+  Future<void> _showSwitchToNormal() async {
     final confirmed = await showLayoutToNormalSwitchDialog(context);
     if (!confirmed) return;
-
-    // 清洗 HTML → Delta
     final content = await _fetchContent();
     if (content != null) {
-      final deltaJson = _cleanLayoutToDelta(content);
+      final cleaned = _stripMarkers(content);
+      final plainHtml = cleaned.replaceAll(RegExp(r'<[^>]+>'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+      final deltaJson = jsonEncode({'ops': [{'insert': '$plainHtml\n'}]});
       await context.read<DocumentProvider>().saveCurrent(newContent: deltaJson);
     }
-    await context.read<DocumentProvider>().switchMode(target);
+    await context.read<DocumentProvider>().switchMode(DocMode.normalWrite);
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
@@ -223,14 +203,7 @@ class _LayoutEditorPageState extends State<LayoutEditorPage> {
     );
   }
 
-  String _cleanLayoutToDelta(String layoutHtml) {
-    // 移除 page-setting / page-break / 交互 class，只留基础 HTML
-    final cleaned = _stripLayoutMarkers(layoutHtml);
-    // 再把 HTML 粗略转 Quill Delta —— 简化版用纯文本
-    return _htmlToDeltaJson(cleaned);
-  }
-
-  String _stripLayoutMarkers(String html) {
+  String _stripMarkers(String html) {
     var s = html;
     s = s.replaceAll(RegExp(r'<page-setting\b[^>]*/?>.*?</page-setting>', caseSensitive: false, dotAll: true), '');
     s = s.replaceAll(RegExp(r'<page-setting\b[^>]*/>', caseSensitive: false), '');
@@ -238,22 +211,38 @@ class _LayoutEditorPageState extends State<LayoutEditorPage> {
     s = s.replaceAll(RegExp(r'<page-break\b[^>]*/>', caseSensitive: false), '');
     s = s.replaceAll(RegExp(r'<script\b[^>]*>.*?</script>', caseSensitive: false, dotAll: true), '');
     s = s.replaceAll(RegExp(r'<iframe\b[^>]*>.*?</iframe>', caseSensitive: false, dotAll: true), '');
-    s = s.replaceAll(RegExp(r"\s+class\s*=\s*[""'][^""']*(wy-expand|wy-shatter|wy-pagebreak)[^""']*[""']", caseSensitive: false), '');
     return s.trim();
-  }
-
-  String _htmlToDeltaJson(String html) {
-    final plain = html
-        .replaceAll(RegExp(r'<[^>]+>'), '')
-        .replaceAll('&nbsp;', ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    // 构造最简 Delta：插入纯文本
-    return jsonEncode({'ops': [{'insert': '$plain\n'}]});
   }
 }
 
-/// 可视化工具栏 —— 所有底层操作封装为按钮
+class _FooterBar extends StatelessWidget {
+  final List<int> perPage;
+  final VoidCallback onSave;
+  final VoidCallback onPublish;
+  final VoidCallback onExport;
+  const _FooterBar({required this.perPage, required this.onSave, required this.onPublish, required this.onExport});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      color: const Color(0xFFF2E9DA),
+      child: Row(
+        children: [
+          Text('共 ${perPage.length} 页',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF795548))),
+          const Spacer(),
+          FilledButton.tonal(onPressed: onSave, child: const Text('保存')),
+          const SizedBox(width: 8),
+          FilledButton.tonal(onPressed: onPublish, child: const Text('发布')),
+          const SizedBox(width: 8),
+          FilledButton.tonal(onPressed: onExport, child: const Text('导出')),
+        ],
+      ),
+    );
+  }
+}
+
 class _VisualToolbar extends StatelessWidget {
   final void Function(String action) onAction;
   const _VisualToolbar({required this.onAction});
@@ -261,32 +250,31 @@ class _VisualToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.creamDark,
+      color: const Color(0xFFF2E9DA),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            _tbtn(Icons.add_box, '插入空白页', 'insert-page'),
-            _tbtn(Icons.copy, '复制当前页', 'duplicate-page'),
-            _tbtn(Icons.delete, '删除当前页', 'delete-page'),
+            _btn(Icons.add_box, '插入空白页', 'insert-page'),
+            _btn(Icons.copy, '复制当前页', 'duplicate-page'),
+            _btn(Icons.delete, '删除当前页', 'delete-page'),
             const SizedBox(width: 12),
-            _tbtn(Icons.image, '背景设置', 'bg-setting'),
-            _tbtn(Icons.layers, '页面层级', 'z-layer'),
+            _btn(Icons.image, '背景设置', 'bg-setting'),
+            _btn(Icons.layers, '页面层级', 'z-layer'),
             const SizedBox(width: 12),
-            _tbtn(Icons.unfold_more, '点击展开隐藏文本', 'comp-expand'),
-            _tbtn(Icons.broken_image, '点击文字碎裂', 'comp-shatter'),
-            _tbtn(Icons.navigate_next, '插入翻页锚点', 'comp-pagebreak'),
+            _btn(Icons.unfold_more, '点击展开', 'comp-expand'),
+            _btn(Icons.broken_image, '文字碎裂', 'comp-shatter'),
+            _btn(Icons.navigate_next, '翻页锚点', 'comp-pagebreak'),
             const SizedBox(width: 12),
-            _tbtn(Icons.text_fields, '文字衬底', 'text-bg'),
-            _tbtn(Icons.auto_awesome_motion, '翻页动画', 'page-animation'),
+            _btn(Icons.text_fields, '文字衬底', 'text-bg'),
           ],
         ),
       ),
     );
   }
 
-  Widget _tbtn(IconData icon, String label, String action) {
+  Widget _btn(IconData icon, String label, String action) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Tooltip(
@@ -295,7 +283,7 @@ class _VisualToolbar extends StatelessWidget {
           onTap: () => onAction(action),
           child: Padding(
             padding: const EdgeInsets.all(6),
-            child: Icon(icon, size: 22, color: AppColors.warmBrown),
+            child: Icon(icon, size: 22, color: const Color(0xFF8B5A2B)),
           ),
         ),
       ),

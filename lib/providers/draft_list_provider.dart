@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../db/repositories/document_repository.dart';
 import '../models/document.dart';
+import '../models/doc_mode.dart';
 
 /// 草稿箱列表 Provider
 class DraftListProvider with ChangeNotifier {
@@ -46,7 +47,7 @@ class DraftListProvider with ChangeNotifier {
     refresh();
   }
 
-  Future<void> deleteBatch(List<Id> ids) async {
+  Future<void> deleteBatch(List<String> ids) async {
     await DocumentRepository.instance.deleteBatch(ids);
     await refresh();
   }

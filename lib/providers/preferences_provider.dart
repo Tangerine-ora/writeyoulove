@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../db/repositories/preferences_repository.dart';
 import '../models/preferences.dart';
 
-/// 全局偏好 Provider —— 应用启动时从 Isar 加载单例 Preferences
+/// 全局偏好 Provider
 class PreferencesProvider with ChangeNotifier {
   Preferences? _prefs;
   bool _loading = true;
@@ -34,7 +34,7 @@ class PreferencesProvider with ChangeNotifier {
   bool get autoIndent => _prefs?.autoIndent ?? true;
   bool get pageTurnAnimation => _prefs?.pageTurnAnimation ?? true;
   bool get hidePageTurnButton => _prefs?.hidePageTurnButton ?? false;
-  HomeEntry get homeEntry => _prefs?.homeEntry ?? HomeEntry.drafts;
-  WordCountRule get wordCountRule =>
-      _prefs?.wordCountRule ?? WordCountRule.withFullWidthSpace;
+  String get homeEntry => _prefs?.homeEntry ?? 'drafts';
+  String get wordCountRule => _prefs?.wordCountRule ?? 'withFullWidthSpace';
+  String get themeMode => _prefs?.themeMode ?? 'warmBrown';
 }

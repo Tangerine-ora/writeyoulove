@@ -1,14 +1,15 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-import '../constants/app_colors.dart';
 import '../models/document.dart';
+import '../models/doc_mode.dart';
 import '../providers/draft_list_provider.dart';
 import '../providers/preferences_provider.dart';
 
-/// 已发布展示页 —— 排版阅读逻辑与预览页完全一致
-/// 仅底部翻页按钮；无编辑入口
+/// 已发布展示页 —— 排版阅读，逻辑与预览页一致，无编辑入口
 class PublishedPage extends StatefulWidget {
   const PublishedPage({super.key});
 
@@ -17,11 +18,10 @@ class PublishedPage extends StatefulWidget {
 }
 
 class _PublishedPageState extends State<PublishedPage> {
-  int? _currentDocId;
+  Document? _currentDoc;
+  WebViewController? _controller;
   int _currentPage = 0;
   int _totalPages = 1;
-  WebViewController? _controller;
-  final PageController _listCtrl = PageController();
 
   @override
   void initState() {
@@ -33,11 +33,11 @@ class _PublishedPageState extends State<PublishedPage> {
 
   Future<void> _openDoc(Document doc) async {
     setState(() {
-      _currentDocId = doc.id;
+      _currentDoc = doc;
       _currentPage = 0;
       _controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setBackgroundColor(AppColors.creamWhite)
+        ..setBackgroundColor(const Color(0xFFFDF8F0))
         ..loadFlutterAsset('assets/web/preview.html')
         ..setNavigationDelegate(
           NavigationDelegate(onPageFinished: (_) async {
@@ -52,7 +52,8 @@ class _PublishedPageState extends State<PublishedPage> {
   }
 
   Future<void> _goPage(int idx) async {
-    if (idx < 0 || idx >= _totalPages || _controller == null) return;
+    if (_controller == null) return;
+    if (idx < 0 || idx >= _totalPages) return;
     setState(() => _currentPage = idx);
     await _controller!.runJavaScript('window.__WY_GO_PAGE__($idx);');
   }
@@ -70,11 +71,14 @@ class _PublishedPageState extends State<PublishedPage> {
           IconButton(
             icon: const Icon(Icons.inbox),
             tooltip: '回到草稿箱',
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () {
+              context.read<DraftListProvider>().setPublishedFilter(null);
+              Navigator.of(context).pop();
+            },
           ),
         ],
       ),
-      body: _currentDocId == null
+      body: _currentDoc == null
           ? _buildPublishedList(list)
           : Stack(
               children: [
@@ -86,23 +90,23 @@ class _PublishedPageState extends State<PublishedPage> {
   }
 
   Widget _buildPublishedList(DraftListProvider list) {
-    final publishedLayouts = list.docs.where((d) => d.isPublished && d.docMode == DocMode.layout).toList();
-    if (publishedLayouts.isEmpty) {
+    final published = list.docs.where((d) => d.isPublished && d.docMode == DocMode.layout).toList();
+    if (published.isEmpty) {
       return const Center(child: Text('暂无已发布的排版作品'));
     }
     return ListView.builder(
       padding: const EdgeInsets.all(12),
-      itemCount: publishedLayouts.length,
+      itemCount: published.length,
       itemBuilder: (_, i) {
-        final doc = publishedLayouts[i];
+        final doc = published[i];
         return Card(
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
             onTap: () => _openDoc(doc),
             child: ListTile(
-              leading: const Icon(Icons.menu_book, color: AppColors.warmBrown),
+              leading: const Icon(Icons.menu_book, color: Color(0xFF8B5A2B)),
               title: Text(doc.title),
-              subtitle: Text('${doc.modeLabel} · ${doc.updatedAt}'),
+              subtitle: Text('${doc.modeLabel} · ${_fmtTime(doc.updatedAt)}'),
             ),
           ),
         );
@@ -126,19 +130,18 @@ class _PublishedPageState extends State<PublishedPage> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: _currentPage > 0 ? () => _goPage(_currentPage - 1) : null,
-              ),
+              IconButton(icon: const Icon(Icons.chevron_left), onPressed: _currentPage > 0 ? () => _goPage(_currentPage - 1) : null),
               Text('${_currentPage + 1} / $_totalPages'),
-              IconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed: _currentPage < _totalPages - 1 ? () => _goPage(_currentPage + 1) : null,
-              ),
+              IconButton(icon: const Icon(Icons.chevron_right), onPressed: _currentPage < _totalPages - 1 ? () => _goPage(_currentPage + 1) : null),
             ],
           ),
         ),
       ),
     );
+  }
+
+  String _fmtTime(int ms) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(ms);
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
   }
 }

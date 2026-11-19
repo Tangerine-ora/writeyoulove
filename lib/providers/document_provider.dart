@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../db/repositories/document_repository.dart';
 import '../models/document.dart';
+import '../models/doc_mode.dart';
 
 /// 当前编辑文档 Provider
 class DocumentProvider with ChangeNotifier {
@@ -12,7 +13,7 @@ class DocumentProvider with ChangeNotifier {
   bool get loading => _loading;
   bool get hasDocument => _current != null;
 
-  Future<void> load(Id id) async {
+  Future<void> load(String id) async {
     _loading = true;
     notifyListeners();
     _current = await DocumentRepository.instance.getById(id);
@@ -34,7 +35,6 @@ class DocumentProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// 保存当前文档（全量覆盖三套内容之一，由 docMode 决定）
   Future<void> saveCurrent({String? newContent}) async {
     if (_current == null) return;
     if (newContent != null) _current!.setCurrentContent(newContent);
@@ -43,8 +43,6 @@ class DocumentProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// 切换模式（只改 docMode，三套内容都保留）
-  /// 调用方负责：保存当前内容 → 弹出可能需要的版本提示
   Future<void> switchMode(DocMode newMode) async {
     if (_current == null || _current!.docMode == newMode) return;
     _current!.docMode = newMode;

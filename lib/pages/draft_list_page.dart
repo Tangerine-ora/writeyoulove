@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:uuid/uuid.dart';
 
-import '../constants/app_colors.dart';
 import '../models/document.dart';
+import '../models/doc_mode.dart';
 import '../providers/document_provider.dart';
 import '../providers/draft_list_provider.dart';
 import 'document_editor_router.dart';
@@ -18,7 +19,7 @@ class DraftListPage extends StatefulWidget {
 }
 
 class _DraftListPageState extends State<DraftListPage> {
-  final Set<Id> _selected = {};
+  final Set<String> _selected = {};
   bool _selectMode = false;
 
   @override
@@ -40,6 +41,7 @@ class _DraftListPageState extends State<DraftListPage> {
           if (_selectMode)
             IconButton(
               icon: const Icon(Icons.delete),
+              tooltip: '批量删除',
               onPressed: _selected.isEmpty
                   ? null
                   : () async {
@@ -71,6 +73,7 @@ class _DraftListPageState extends State<DraftListPage> {
           if (_selectMode)
             IconButton(
               icon: const Icon(Icons.close),
+              tooltip: '退出选择',
               onPressed: () => setState(() {
                 _selected.clear();
                 _selectMode = false;
@@ -95,10 +98,7 @@ class _DraftListPageState extends State<DraftListPage> {
                         padding: const EdgeInsets.all(12),
                         itemCount: list.docs.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) {
-                          final doc = list.docs[i];
-                          return _buildDocCard(doc);
-                        },
+                        itemBuilder: (_, i) => _buildDocCard(list.docs[i]),
                       ),
           ),
         ],
@@ -110,32 +110,19 @@ class _DraftListPageState extends State<DraftListPage> {
     final list = context.watch<DraftListProvider>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: Row(
-        children: [
-          ChoiceChip(
-            label: const Text('全部'),
-            selected: list.modeFilter == null,
-            onSelected: (_) => list.setModeFilter(null),
-          ),
-          const SizedBox(width: 6),
-          ChoiceChip(
-            label: const Text('文本'),
-            selected: list.modeFilter == DocMode.normalWrite,
-            onSelected: (_) => list.setModeFilter(DocMode.normalWrite),
-          ),
-          const SizedBox(width: 6),
-          ChoiceChip(
-            label: const Text('排版'),
-            selected: list.modeFilter == DocMode.layout,
-            onSelected: (_) => list.setModeFilter(DocMode.layout),
-          ),
-          const SizedBox(width: 6),
-          ChoiceChip(
-            label: const Text('开发者'),
-            selected: list.modeFilter == DocMode.developer,
-            onSelected: (_) => list.setModeFilter(DocMode.developer),
-          ),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            ChoiceChip(label: const Text('全部'), selected: list.modeFilter == null, onSelected: (_) => list.setModeFilter(null)),
+            const SizedBox(width: 6),
+            ChoiceChip(label: const Text('文本'), selected: list.modeFilter == DocMode.normalWrite, onSelected: (_) => list.setModeFilter(DocMode.normalWrite)),
+            const SizedBox(width: 6),
+            ChoiceChip(label: const Text('排版'), selected: list.modeFilter == DocMode.layout, onSelected: (_) => list.setModeFilter(DocMode.layout)),
+            const SizedBox(width: 6),
+            ChoiceChip(label: const Text('开发者'), selected: list.modeFilter == DocMode.developer, onSelected: (_) => list.setModeFilter(DocMode.developer)),
+          ],
+        ),
       ),
     );
   }
@@ -145,11 +132,7 @@ class _DraftListPageState extends State<DraftListPage> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: TextField(
-        decoration: const InputDecoration(
-          hintText: '搜索标题或正文…',
-          prefixIcon: Icon(Icons.search, size: 20),
-          isDense: true,
-        ),
+        decoration: const InputDecoration(hintText: '搜索标题或正文…', prefixIcon: Icon(Icons.search, size: 20), isDense: true),
         onChanged: list.setKeyword,
       ),
     );
@@ -157,15 +140,26 @@ class _DraftListPageState extends State<DraftListPage> {
 
   Widget _buildDocCard(Document doc) {
     final selected = _selected.contains(doc.id);
+    final color = switch (doc.docMode) {
+      DocMode.normalWrite => const Color(0xFF8B5A2B),
+      DocMode.layout => const Color(0xFFC89B5B),
+      DocMode.developer => const Color(0xFF6C8E6A),
+    };
+    final icon = switch (doc.docMode) {
+      DocMode.normalWrite => Icons.edit_note,
+      DocMode.layout => Icons.picture_as_pdf,
+      DocMode.developer => Icons.code,
+    };
+
     return Card(
-      color: selected ? AppColors.creamDark : null,
+      color: selected ? const Color(0xFFF2E9DA) : null,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onLongPress: () {
           setState(() => _selectMode = true);
           _selected.add(doc.id);
         },
-        onTap: () {
+        onTap: () async {
           if (_selectMode) {
             setState(() {
               if (selected) {
@@ -176,14 +170,26 @@ class _DraftListPageState extends State<DraftListPage> {
               }
             });
           } else {
-            _openDoc(doc);
+            await context.read<DocumentProvider>().load(doc.id);
+            if (!mounted) return;
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DocumentEditorRouter()),
+            ).then((_) {
+              if (mounted) context.read<DraftListProvider>().refresh();
+            });
           }
         },
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              _buildModeIcon(doc.docMode),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+                child: Icon(icon, color: color),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -192,52 +198,19 @@ class _DraftListPageState extends State<DraftListPage> {
                     Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            doc.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
+                          child: Text(doc.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF3E2723))),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: doc.isPublished
-                                ? AppColors.success.withOpacity(0.15)
-                                : AppColors.divider.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            doc.isPublished ? '已发布' : '草稿',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: doc.isPublished
-                                  ? AppColors.success
-                                  : AppColors.textSecondary,
-                            ),
-                          ),
+                          decoration: BoxDecoration(color: doc.isPublished ? Colors.green.withOpacity(0.15) : const Color(0xFFD7C4A8).withOpacity(0.3), borderRadius: BorderRadius.circular(4)),
+                          child: Text(doc.isPublished ? '已发布' : '草稿', style: TextStyle(fontSize: 11, color: doc.isPublished ? Colors.green : const Color(0xFF795548))),
                         ),
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      _previewOf(doc),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
+                    Text(_previewOf(doc), maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF795548))),
                     const SizedBox(height: 4),
-                    Text(
-                      '${doc.modeLabel} · ${_fmtTime(doc.updatedAt)}',
-                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                    ),
+                    Text('${doc.modeLabel} · ${_fmtTime(doc.updatedAt)}', style: const TextStyle(fontSize: 11, color: Color(0xFF795548))),
                   ],
                 ),
               ),
@@ -248,32 +221,14 @@ class _DraftListPageState extends State<DraftListPage> {
     );
   }
 
-  Widget _buildModeIcon(DocMode mode) {
-    final (icon, color) = switch (mode) {
-      DocMode.normalWrite => (Icons.edit_note, AppColors.warmBrown),
-      DocMode.layout => (Icons.picture_as_pdf, AppColors.accentGold),
-      DocMode.developer => (Icons.code, AppColors.expandTag),
-    };
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(icon, color: color),
-    );
-  }
-
   Widget _buildEmpty() {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.inbox, size: 64, color: AppColors.divider),
+          const Icon(Icons.inbox, size: 64, color: Color(0xFFD7C4A8)),
           const SizedBox(height: 12),
-          Text('没有草稿，点右下角 + 创建新文档',
-              style: TextStyle(color: Colors.grey.shade600)),
+          Text('没有草稿，点右下角 + 创建新文档', style: TextStyle(color: Colors.grey.shade600)),
         ],
       ),
     );
@@ -282,11 +237,12 @@ class _DraftListPageState extends State<DraftListPage> {
   String _previewOf(Document doc) {
     switch (doc.docMode) {
       case DocMode.normalWrite:
-        return doc.rawTextContent.isNotEmpty ? doc.rawTextContent.substring(0, doc.rawTextContent.length > 60 ? 60 : doc.rawTextContent.length) : '（空）';
+        final t = doc.rawTextContent;
+        return t.isNotEmpty ? t : '（空）';
       case DocMode.layout:
-        return '排版模式 · ${doc.layoutContent.isNotEmpty ? doc.layoutContent.length : 0} 字';
+        return '排版模式 · ${doc.layoutContent.length} 字符';
       case DocMode.developer:
-        return '开发者模式 · ${doc.devContent.isNotEmpty ? doc.devContent.length : 0} 字';
+        return '开发者模式 · ${doc.devContent.length} 字符';
     }
   }
 
@@ -299,19 +255,8 @@ class _DraftListPageState extends State<DraftListPage> {
     return '${dt.year}-${dt.month}-${dt.day}';
   }
 
-  Future<void> _openDoc(Document doc) async {
-    await context.read<DocumentProvider>().load(doc.id);
-    if (!mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const DocumentEditorRouter()),
-    ).then((_) {
-      if (mounted) context.read<DraftListProvider>().refresh();
-    });
-  }
-
   Future<void> _showNewDocDialog() async {
-    final controller = TextEditingController();
+    final nameCtrl = TextEditingController();
     DocMode selected = DocMode.normalWrite;
 
     await showDialog(
@@ -322,38 +267,25 @@ class _DraftListPageState extends State<DraftListPage> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: controller,
-                decoration: const InputDecoration(labelText: '标题'),
-              ),
+              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: '标题')),
               const SizedBox(height: 16),
               const Text('默认模式'),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 6,
                 children: DocMode.values
-                    .map((m) => ChoiceChip(
-                          label: Text(m.name),
-                          selected: selected == m,
-                          onSelected: (_) => set(() => selected = m),
-                        ))
+                    .map((m) => ChoiceChip(label: Text(m.label), selected: selected == m, onSelected: (_) => set(() => selected = m)))
                     .toList(),
               ),
             ],
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
             ElevatedButton(
               onPressed: () async {
                 Navigator.pop(ctx);
-                final title = controller.text.trim().isEmpty ? '未命名文档' : controller.text.trim();
-                await context.read<DocumentProvider>().createNew(
-                      title: title,
-                      docMode: selected,
-                    );
+                final title = nameCtrl.text.trim().isEmpty ? '未命名文档' : nameCtrl.text.trim();
+                await context.read<DocumentProvider>().createNew(title: title, docMode: selected);
                 if (!mounted) return;
                 Navigator.push(
                   context,

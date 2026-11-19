@@ -1,29 +1,40 @@
 import 'dart:convert';
 
-import 'package:flutter_quill/flutter_quill.dart' as quill;
+import 'package:dart_quill_delta/dart_quill_delta.dart';
 
-import '../models/preferences.dart';
-import '../constants/app_constants.dart';
+import '../models/document.dart';
+import '../models/doc_mode.dart';
+
+/// 纯文本 Delta 转换
+String deltaToPlain(Delta delta) {
+  final buffer = StringBuffer();
+  for (final op in delta.toJson()) {
+    if (op is Map<String, dynamic>) {
+      final insert = op['insert'];
+      if (insert is String) buffer.write(insert);
+    }
+  }
+  return buffer.toString();
+}
+
+Delta deltaFromJsonString(String json) {
+  final ops = jsonDecode(json);
+  final list = ops is List ? ops : (ops as Map<String, dynamic>)['ops'] as List<dynamic>? ?? [];
+  return Delta.fromJson(list);
+}
 
 /// 字数统计
 class WordCounter {
   WordCounter._();
   static final WordCounter instance = WordCounter._();
 
-  /// 统计 Delta / 纯文本 / HTML 的字数
-  int count({
-    required String content,
-    required DocMode mode,
-    WordCountRule rule = WordCountRule.withFullWidthSpace,
-  }) {
+  int count({required String content, required DocMode mode, String rule = 'withFullWidthSpace'}) {
     final plain = _extractPlainText(content, mode);
     switch (rule) {
-      case WordCountRule.withFullWidthSpace:
-        // 含全角空格：直接数 rune
-        return plain.runes.length;
-      case WordCountRule.withoutSpace:
-        // 不含空格：过滤掉空格再数
+      case 'withoutSpace':
         return plain.replaceAll(RegExp(r'[\s\u3000]+'), '').runes.length;
+      default:
+        return plain.runes.length;
     }
   }
 
@@ -31,47 +42,36 @@ class WordCounter {
     switch (mode) {
       case DocMode.normalWrite:
         try {
-          final doc = quill.Document.fromJson(
-            jsonDecode(content) as Map<String, dynamic>,
-          );
-          return doc.toPlainText();
+          return deltaToPlain(deltaFromJsonString(content));
         } catch (_) {
           return content;
         }
       case DocMode.layout:
       case DocMode.developer:
-        // 简易 HTML 转纯文本
-        return _htmlToPlainText(content);
+        return _htmlToPlain(content);
     }
   }
 
-  String _htmlToPlainText(String html) {
-    // 剥离排版自定义标记
+  String _htmlToPlain(String html) {
     var s = html;
     s = s.replaceAll(RegExp(r'<page-setting\b[^>]*/?>.*?</page-setting>', caseSensitive: false, dotAll: true), '');
     s = s.replaceAll(RegExp(r'<page-setting\b[^>]*/>', caseSensitive: false), '');
     s = s.replaceAll(RegExp(r'<page-break\b[^>]*/?>.*?</page-break>', caseSensitive: false, dotAll: true), '');
     s = s.replaceAll(RegExp(r'<page-break\b[^>]*/>', caseSensitive: false), '');
     s = s.replaceAll(RegExp(r'<script\b[^>]*>.*?</script>', caseSensitive: false, dotAll: true), '');
-    s = s.replaceAll(RegExp(r'<[^>]+>', ''));
+    s = s.replaceAll(RegExp(r'<[^>]+>'), '');
     s = s.replaceAll('&nbsp;', ' ');
     s = s.replaceAll(RegExp(r'\s+'), ' ');
     return s.trim();
   }
 
-  /// 排版模式：逐页字数统计
-  /// 按 <page-break> 或 <page-setting> 切分页
-  List<int> countPerPage(String layoutHtml, WordCountRule rule) {
+  List<int> countPerPage(String layoutHtml, String rule) {
     final pages = _splitPages(layoutHtml);
     return pages.map((p) => count(content: p, mode: DocMode.layout, rule: rule)).toList();
   }
 
   List<String> _splitPages(String html) {
-    // 先把 page-setting 也当作分页标记
-    final splitBy = RegExp(
-      r'(?=<page-setting\b|<page-break\b)',
-      caseSensitive: false,
-    );
+    final splitBy = RegExp(r'(?=<page-setting\b|<page-break\b)', caseSensitive: false);
     final parts = html.split(splitBy).where((s) => s.trim().isNotEmpty).toList();
     return parts.isEmpty ? [html] : parts;
   }

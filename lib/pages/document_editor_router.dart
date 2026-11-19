@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/document.dart';
+import '../models/doc_mode.dart';
+import '../providers/document_provider.dart';
+import 'normal_writer_page.dart';
 import 'layout_editor_page.dart';
 import 'dev_editor_page.dart';
-import 'normal_writer_page.dart';
 
 /// 根据文档当前 docMode 自动路由到对应编辑器
 class DocumentEditorRouter extends StatelessWidget {

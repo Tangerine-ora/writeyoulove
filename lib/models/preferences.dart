@@ -1,43 +1,54 @@
-import 'package:isar/isar.dart';
-
-part 'preferences.g.dart';
-
 /// 全局偏好 —— 不绑定单篇文档
-/// 单例存储（id 固定为 1）
-@collection
 class Preferences {
-  Preferences({this.id = 1});
-
-  Id id = 1;
+  Preferences();
 
   // ===== 普通写作 =====
-  bool autoIndent = true;              // 自动首行缩进
+  bool autoIndent = true;
   String defaultFontFamily = 'Noto Serif SC';
   double defaultFontSize = 16;
 
   // ===== 排版预览 =====
-  bool pageTurnAnimation = true;       // 翻页动画
-  @enumerated
-  BgFillMode bgFillMode = BgFillMode.cover;
-  bool hidePageTurnButton = false;     // 是否隐藏翻页按钮
+  bool pageTurnAnimation = true;
+  String bgFillMode = 'cover'; // cover / contain / repeat
+  bool hidePageTurnButton = false;
 
   // ===== App 启动入口 =====
-  @enumerated
-  HomeEntry homeEntry = HomeEntry.drafts;
+  String homeEntry = 'drafts'; // drafts / published
 
   // ===== 图片处理 =====
   bool imageCompressEnabled = true;
 
   // ===== 字数统计规则 =====
-  @enumerated
-  WordCountRule wordCountRule = WordCountRule.withFullWidthSpace;
+  String wordCountRule = 'withFullWidthSpace'; // withFullWidthSpace / withoutSpace
 
-  // ===== 主题（预留，当前只有 warmBrown）=====
-  @enumerated
-  AppThemeMode themeMode = AppThemeMode.warmBrown;
+  // ===== 主题（预留）=====
+  String themeMode = 'warmBrown';
+
+  Map<String, dynamic> toMap() => {
+        'autoIndent': autoIndent,
+        'defaultFontFamily': defaultFontFamily,
+        'defaultFontSize': defaultFontSize,
+        'pageTurnAnimation': pageTurnAnimation,
+        'bgFillMode': bgFillMode,
+        'hidePageTurnButton': hidePageTurnButton,
+        'homeEntry': homeEntry,
+        'imageCompressEnabled': imageCompressEnabled,
+        'wordCountRule': wordCountRule,
+        'themeMode': themeMode,
+      };
+
+  factory Preferences.fromMap(Map<String, dynamic> m) {
+    final p = Preferences();
+    p.autoIndent = m['autoIndent'] as bool? ?? true;
+    p.defaultFontFamily = m['defaultFontFamily'] as String? ?? 'Noto Serif SC';
+    p.defaultFontSize = (m['defaultFontSize'] as num?)?.toDouble() ?? 16;
+    p.pageTurnAnimation = m['pageTurnAnimation'] as bool? ?? true;
+    p.bgFillMode = m['bgFillMode'] as String? ?? 'cover';
+    p.hidePageTurnButton = m['hidePageTurnButton'] as bool? ?? false;
+    p.homeEntry = m['homeEntry'] as String? ?? 'drafts';
+    p.imageCompressEnabled = m['imageCompressEnabled'] as bool? ?? true;
+    p.wordCountRule = m['wordCountRule'] as String? ?? 'withFullWidthSpace';
+    p.themeMode = m['themeMode'] as String? ?? 'warmBrown';
+    return p;
+  }
 }
-
-enum BgFillMode { cover, contain, repeat }
-enum HomeEntry { drafts, published }
-enum WordCountRule { withFullWidthSpace, withoutSpace }
-enum AppThemeMode { warmBrown, dark, inkBlue }

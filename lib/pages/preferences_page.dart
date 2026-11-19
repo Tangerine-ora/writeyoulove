@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../constants/app_colors.dart';
 import '../models/preferences.dart';
 import '../providers/preferences_provider.dart';
 
@@ -37,35 +36,27 @@ class PreferencesPage extends StatelessWidget {
                 ),
                 SwitchListTile(
                   title: const Text('隐藏翻页按钮'),
-                  subtitle: const Text('本期仅支持底部翻页按钮，不支持点击翻页或键盘快捷键'),
+                  subtitle: const Text('仅支持底部翻页按钮；不支持点击翻页或键盘快捷键'),
                   value: p.hidePageTurnButton,
                   onChanged: (v) => prefs.updatePrefs((pp) => pp..hidePageTurnButton = v),
                 ),
                 _divider(),
                 _section('App 启动入口'),
-                SegmentedButton<HomeEntry>(
+                SegmentedButton<String>(
                   segments: const [
-                    ButtonSegment(value: HomeEntry.drafts, label: Text('草稿箱')),
-                    ButtonSegment(value: HomeEntry.published, label: Text('已发布展示页')),
+                    ButtonSegment(value: 'drafts', label: Text('草稿箱')),
+                    ButtonSegment(value: 'published', label: Text('已发布展示页')),
                   ],
                   selected: {p.homeEntry},
                   onSelectionChanged: (s) =>
                       prefs.updatePrefs((pp) => pp..homeEntry = s.first),
                 ),
                 _divider(),
-                _section('图片处理'),
-                SwitchListTile(
-                  title: const Text('图片压缩'),
-                  subtitle: const Text('上传图片时自动压缩，节省本地存储空间'),
-                  value: p.imageCompressEnabled,
-                  onChanged: (v) => prefs.updatePrefs((pp) => pp..imageCompressEnabled = v),
-                ),
-                _divider(),
                 _section('字数统计规则'),
-                SegmentedButton<WordCountRule>(
+                SegmentedButton<String>(
                   segments: const [
-                    ButtonSegment(value: WordCountRule.withFullWidthSpace, label: Text('含全角空格')),
-                    ButtonSegment(value: WordCountRule.withoutSpace, label: Text('不含空格')),
+                    ButtonSegment(value: 'withFullWidthSpace', label: Text('含全角空格')),
+                    ButtonSegment(value: 'withoutSpace', label: Text('不含空格')),
                   ],
                   selected: {p.wordCountRule},
                   onSelectionChanged: (s) =>
@@ -78,9 +69,9 @@ class PreferencesPage extends StatelessWidget {
                   child: Wrap(
                     spacing: 8,
                     children: [
-                      _themeChip(AppThemeMode.warmBrown, '暖棕米白', AppColors.warmBrown),
-                      _themeChip(AppThemeMode.dark, '深色（待实现）', Colors.grey),
-                      _themeChip(AppThemeMode.inkBlue, '墨蓝（待实现）', Colors.blueGrey),
+                      _themeChip('warmBrown', '暖棕米白', const Color(0xFF8B5A2B)),
+                      _themeChip('dark', '深色（待实现）', Colors.grey),
+                      _themeChip('inkBlue', '墨蓝（待实现）', Colors.blueGrey),
                     ],
                   ),
                 ),
@@ -100,12 +91,12 @@ class PreferencesPage extends StatelessWidget {
             style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: AppColors.warmBrown)),
+                color: Color(0xFF8B5A2B))),
       );
 
   Widget _divider() => const Divider(height: 1);
 
-  Widget _themeChip(AppThemeMode mode, String label, Color color) {
+  Widget _themeChip(String mode, String label, Color color) {
     return FilterChip(
       label: Row(
         mainAxisSize: MainAxisSize.min,
@@ -115,8 +106,8 @@ class PreferencesPage extends StatelessWidget {
           Text(label),
         ],
       ),
-      selected: false,
-      onSelected: mode == AppThemeMode.warmBrown ? (_) {} : null,
+      selected: mode == 'warmBrown',
+      onSelected: mode == 'warmBrown' ? (_) {} : null,
     );
   }
 }
