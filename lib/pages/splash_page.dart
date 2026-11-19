@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 
 import '../providers/preferences_provider.dart';
 import 'draft_list_page.dart';
-import 'published_page.dart';
 
 /// 启动页
 class SplashPage extends StatelessWidget {
@@ -20,9 +19,7 @@ class SplashPage extends StatelessWidget {
           final entry = prefs.homeEntry;
           Navigator.of(ctx).pushReplacement(
             MaterialPageRoute(
-              builder: (_) => entry == 'published'
-                  ? const PublishedPage()
-                  : const DraftListPage(),
+              builder: (_) => DraftListPage(openProfile: entry == 'published'),
             ),
           );
         });

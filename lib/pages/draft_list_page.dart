@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../db/repositories/document_repository.dart';
 import '../models/document.dart';
 import '../models/doc_mode.dart';
 import '../providers/document_provider.dart';
@@ -9,9 +10,11 @@ import 'document_editor_router.dart';
 import 'preferences_page.dart';
 import 'published_page.dart';
 
-/// 草稿箱列表
+/// 草稿箱列表（含个人主页视图，可来回切换）
 class DraftListPage extends StatefulWidget {
-  const DraftListPage({super.key});
+  final bool openProfile;
+
+  const DraftListPage({super.key, this.openProfile = false});
 
   @override
   State<DraftListPage> createState() => _DraftListPageState();
@@ -20,12 +23,26 @@ class DraftListPage extends StatefulWidget {
 class _DraftListPageState extends State<DraftListPage> {
   final Set<String> _selected = {};
   bool _selectMode = false;
+  bool _showProfile = false;
+  List<Document> _publishedDocs = [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<DraftListProvider>().refresh();
+      if (widget.openProfile) _switchToProfile();
+    });
+  }
+
+  Future<void> _switchToProfile() async {
+    final docs = await DocumentRepository.instance.listAll(isPublished: true);
+    if (!mounted) return;
+    setState(() {
+      _publishedDocs = docs.where((d) => d.docMode == DocMode.layout).toList();
+      _showProfile = true;
+      _selectMode = false;
+      _selected.clear();
     });
   }
 
@@ -33,6 +50,18 @@ class _DraftListPageState extends State<DraftListPage> {
   Widget build(BuildContext context) {
     final list = context.watch<DraftListProvider>();
 
+    // ====== 个人主页视图 ======
+    if (_showProfile) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFFDF8F0),
+        body: PublishedView(
+          docs: _publishedDocs,
+          onSwitchBack: () => setState(() => _showProfile = false),
+        ),
+      );
+    }
+
+    // ====== 草稿箱视图 ======
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -55,19 +84,11 @@ class _DraftListPageState extends State<DraftListPage> {
                     },
             ),
           if (!_selectMode) ...[
-            // 筛选按钮（替代原来的 FilterBar）
+            // 筛选 + 搜索
             IconButton(
               icon: const Icon(Icons.filter_list),
-              tooltip: '筛选',
+              tooltip: '筛选与搜索',
               onPressed: _showFilterSheet,
-            ),
-            IconButton(
-              icon: const Icon(Icons.public),
-              tooltip: '已发布展示页',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const PublishedPage()),
-              ),
             ),
             IconButton(
               icon: const Icon(Icons.settings),
@@ -75,6 +96,22 @@ class _DraftListPageState extends State<DraftListPage> {
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const PreferencesPage()),
+              ),
+            ),
+            // 头像 → 个人主页
+            Padding(
+              padding: const EdgeInsets.only(right: 12, left: 2),
+              child: GestureDetector(
+                onTap: _switchToProfile,
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color(0xFF8B5A2B),
+                  ),
+                  child: const Icon(Icons.person, color: Colors.white, size: 20),
+                ),
               ),
             ),
           ],
@@ -96,7 +133,6 @@ class _DraftListPageState extends State<DraftListPage> {
       body: Column(
         children: [
           _buildActiveFilterChip(),
-          _buildSearchBar(),
           Expanded(
             child: list.loading
                 ? const Center(child: CircularProgressIndicator())
@@ -120,28 +156,35 @@ class _DraftListPageState extends State<DraftListPage> {
 
   Widget _buildActiveFilterChip() {
     final list = context.watch<DraftListProvider>();
-    if (list.modeFilter == null) return const SizedBox.shrink();
+    final chips = <Widget>[];
+    if (list.modeFilter != null) {
+      chips.add(_activeChip('筛选：${list.modeFilter!.label}', () => list.setModeFilter(null)));
+    }
+    if (list.keyword.trim().isNotEmpty) {
+      chips.add(_activeChip('搜索：${list.keyword.trim()}', () => list.setKeyword('')));
+    }
+    if (chips.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Wrap(spacing: 8, runSpacing: 6, children: chips),
+    );
+  }
+
+  Widget _activeChip(String text, VoidCallback onClear) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF8B5A2B).withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF8B5A2B).withOpacity(0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('筛选：${list.modeFilter!.label}', style: const TextStyle(fontSize: 12, color: Color(0xFF8B5A2B))),
-                const SizedBox(width: 4),
-                GestureDetector(
-                  onTap: () => list.setModeFilter(null),
-                  child: const Icon(Icons.close, size: 14, color: Color(0xFF8B5A2B)),
-                ),
-              ],
-            ),
+          Text(text, style: const TextStyle(fontSize: 12, color: Color(0xFF8B5A2B))),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onClear,
+            child: const Icon(Icons.close, size: 14, color: Color(0xFF8B5A2B)),
           ),
         ],
       ),
@@ -151,37 +194,55 @@ class _DraftListPageState extends State<DraftListPage> {
   Future<void> _showFilterSheet() async {
     final list = context.read<DraftListProvider>();
     final current = list.modeFilter;
+    final kwCtrl = TextEditingController(text: list.keyword);
 
     await showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  children: [
-                    const Text('筛选文档', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF3E2723))),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Row(
+                    children: [
+                      const Text('筛选与搜索', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF3E2723))),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              _filterOption('全部', null, current, Icons.all_inclusive),
-              _filterOption('文本模式', DocMode.normalWrite, current, Icons.edit_note),
-              _filterOption('排版模式', DocMode.layout, current, Icons.picture_as_pdf),
-              _filterOption('开发者模式', DocMode.developer, current, Icons.code),
-              const SizedBox(height: 12),
-            ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: TextField(
+                    controller: kwCtrl,
+                    decoration: const InputDecoration(
+                      hintText: '搜索标题或正文…',
+                      prefixIcon: Icon(Icons.search, size: 20),
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: list.setKeyword,
+                  ),
+                ),
+                _filterOption('全部', null, current, Icons.all_inclusive),
+                _filterOption('文本模式', DocMode.normalWrite, current, Icons.edit_note),
+                _filterOption('排版模式', DocMode.layout, current, Icons.picture_as_pdf),
+                _filterOption('开发者模式', DocMode.developer, current, Icons.code),
+                const SizedBox(height: 12),
+              ],
+            ),
           ),
         );
       },
@@ -331,19 +392,8 @@ class _DraftListPageState extends State<DraftListPage> {
   }
 
   // =====================================
-  // 卡片 / 搜索 / 空态 / 工具方法
+  // 卡片 / 空态 / 工具方法
   // =====================================
-
-  Widget _buildSearchBar() {
-    final list = context.read<DraftListProvider>();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: TextField(
-        decoration: const InputDecoration(hintText: '搜索标题或正文…', prefixIcon: Icon(Icons.search, size: 20), isDense: true),
-        onChanged: list.setKeyword,
-      ),
-    );
-  }
 
   Widget _buildDocCard(Document doc) {
     final selected = _selected.contains(doc.id);

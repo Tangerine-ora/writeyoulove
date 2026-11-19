@@ -3,30 +3,24 @@ import 'package:provider/provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../models/document.dart';
-import '../models/doc_mode.dart';
-import '../providers/draft_list_provider.dart';
 import '../providers/preferences_provider.dart';
 
-/// 已发布展示页 —— 按设计稿：错踪堆叠卡片 + 半透明简介 + 暖棕米白
-class PublishedPage extends StatefulWidget {
-  const PublishedPage({super.key});
+/// 个人主页 / 已发布展示视图 —— 嵌入草稿箱，通过头像来回切换
+class PublishedView extends StatefulWidget {
+  final List<Document> docs;
+  final VoidCallback onSwitchBack;
+
+  const PublishedView({super.key, required this.docs, required this.onSwitchBack});
+
   @override
-  State<PublishedPage> createState() => _PublishedPageState();
+  State<PublishedView> createState() => _PublishedViewState();
 }
 
-class _PublishedPageState extends State<PublishedPage> {
+class _PublishedViewState extends State<PublishedView> {
   Document? _currentDoc;
   WebViewController? _controller;
   int _currentPage = 0;
   int _totalPages = 1;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<DraftListProvider>().setPublishedFilter(true);
-    });
-  }
 
   Future<void> _openDoc(Document doc) async {
     setState(() {
@@ -117,31 +111,26 @@ class _PublishedPageState extends State<PublishedPage> {
 
   @override
   Widget build(BuildContext context) {
-    final list = context.watch<DraftListProvider>();
-
     if (_currentDoc != null && _controller != null) {
       return _buildReading(_currentDoc!);
     }
 
-    final published = list.docs.where((d) => d.isPublished && d.docMode == DocMode.layout).toList();
-
-    // ====== 展示页：暖米白底 + 顶部栏 + 错踪卡片墙 ======
-    return Scaffold(
-      backgroundColor: const Color(0xFFFDF8F0),
-      body: Column(
+    return ColoredBox(
+      color: const Color(0xFFFDF8F0),
+      child: Column(
         children: [
           _buildTopBar(),
           Expanded(
-            child: published.isEmpty
+            child: widget.docs.isEmpty
                 ? const _EmptyHint()
-                : _buildCardWall(published),
+                : _buildCardWall(widget.docs),
           ),
         ],
       ),
     );
   }
 
-  // ====== 顶部栏：已发布 + 搜索 + 圆形头像 ======
+  // ====== 顶部栏：已发布 + 圆形头像（切回草稿箱） ======
   Widget _buildTopBar() {
     return SafeArea(
       bottom: false,
@@ -149,26 +138,10 @@ class _PublishedPageState extends State<PublishedPage> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            // 搜索
-            Container(
-              width: 40, height: 40,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFD7C4A8)),
-              ),
-              child: const Icon(Icons.search, color: Color(0xFF8B5A2B), size: 20),
-            ),
-            const SizedBox(width: 12),
-            // 标题
             const Text('已发布', style: TextStyle(color: Color(0xFF8B5A2B), fontWeight: FontWeight.w700, fontSize: 20)),
             const Spacer(),
-            // 圆形头像
             GestureDetector(
-              onTap: () {
-                context.read<DraftListProvider>().setPublishedFilter(null);
-                Navigator.of(context).pop();
-              },
+              onTap: widget.onSwitchBack,
               child: Container(
                 width: 40, height: 40,
                 decoration: BoxDecoration(
@@ -186,20 +159,16 @@ class _PublishedPageState extends State<PublishedPage> {
   }
 
   // ====== 错踪卡片墙 ======
-  // 设计稿理解：一张卡片叠在上一张右下角，斜着排，不是 wrap 换行
   Widget _buildCardWall(List<Document> docs) {
     return LayoutBuilder(
       builder: (ctx, constraints) {
-        final cardW = (constraints.maxWidth - 48) / 2; // 两列卡片
+        final cardW = (constraints.maxWidth - 48) / 2;
         final cardH = 240.0;
-        final overlap = 24.0; // 下一张卡片向上偏移覆盖上一张
+        final overlap = 24.0;
         final cols = 2;
-        // 每列位置：第 r 行第 c 列
         final positions = <_CardPos>[];
         for (int i = 0; i < docs.length; i++) {
-          final c = i % cols;
-          final r = i ~/ cols;
-          positions.add(_CardPos(c: c, r: r));
+          positions.add(_CardPos(c: i % cols, r: i ~/ cols));
         }
         final totalRows = (docs.length / cols).ceil();
         final totalH = totalRows * cardH - (totalRows - 1) * overlap + 32;
@@ -244,7 +213,7 @@ class _EmptyHint extends StatelessWidget {
           const SizedBox(height: 12),
           Text('暂无已发布的排版作品', style: TextStyle(color: const Color(0xFF795548).withOpacity(0.7))),
           const SizedBox(height: 4),
-          Text('在草稿箱里把文档发布后会出现在这里', style: TextStyle(color: const Color(0xFF795548).withOpacity(0.5), fontSize: 12)),
+          Text('把文档发布后会出现在这里', style: TextStyle(color: const Color(0xFF795548).withOpacity(0.5), fontSize: 12)),
         ],
       ),
     );
@@ -277,7 +246,6 @@ class _PublishedCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 渐变缩略区
             Expanded(
               flex: 3,
               child: Container(
@@ -297,7 +265,6 @@ class _PublishedCard extends StatelessWidget {
                 ),
               ),
             ),
-            // 简介（半透明）+ 主标题
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
               child: Column(

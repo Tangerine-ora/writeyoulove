@@ -16,18 +16,23 @@ class DraftListProvider with ChangeNotifier {
   bool get loading => _loading;
   DocMode? get modeFilter => _modeFilter;
   bool? get publishedFilter => _publishedFilter;
+  String get keyword => _keyword;
 
   Future<void> refresh() async {
     _loading = true;
     notifyListeners();
-    var list = await DocumentRepository.instance.listAll(
+    final list = await DocumentRepository.instance.listAll(
       filterMode: _modeFilter,
       isPublished: _publishedFilter,
     );
-    if (_keyword.trim().isNotEmpty) {
-      list = await DocumentRepository.instance.search(_keyword);
-    }
-    _docs = list;
+    final kw = _keyword.trim().toLowerCase();
+    _docs = kw.isEmpty
+        ? list
+        : list.where((d) {
+            return d.title.toLowerCase().contains(kw) ||
+                d.rawTextContent.toLowerCase().contains(kw) ||
+                d.layoutContent.toLowerCase().contains(kw);
+          }).toList();
     _loading = false;
     notifyListeners();
   }
